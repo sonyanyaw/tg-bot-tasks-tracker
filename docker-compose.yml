@@ -30,4 +30,4 @@ services:
   
     
 volumes:
-  bot-db-data:
+  bot_db_data:

@@ -186,14 +186,13 @@ class ReminderService:
                 return
 
 
+            user_tz = ZoneInfo(task.user.timezone)
             due_local = task.due_at.astimezone(user_tz)
             
             if not task.is_active:
                 cancel_task_jobs(task.id, due_local)
                 return
-
-
-            user_tz = ZoneInfo(task.user.timezone)
+                  
             
             now_utc = datetime.now(UTC)
             delta = task.due_at - now_utc

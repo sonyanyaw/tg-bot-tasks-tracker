@@ -47,7 +47,7 @@ class ReminderService:
                 if not reminder:
                     continue
                 user_tz = ZoneInfo(task.user.timezone)
-                next_due = calculate_next_due(task, user_tz)
+                next_due = calculate_next_due(task, user_tz, False)
                 # Если нет следующего события, пропускаем
                 if not next_due:
                     continue
@@ -73,7 +73,7 @@ class ReminderService:
             return
 
         user_tz = ZoneInfo(task.user.timezone)
-        next_due = calculate_next_due(task, user_tz)
+        next_due = calculate_next_due(task, user_tz, False)
 
         # вычисляем remind_end
         remind_end = datetime.combine(
@@ -93,8 +93,8 @@ class ReminderService:
             remind_start=data.get("reminder_start_before", 10),
             interval_before_deadline=data.get("reminder_before", 10),
             interval_after_deadline=data.get("reminder_after", 5),
-            interval_before_unit=data.get("reminder_before_unit", "minutes"),  # new
-            interval_after_unit=data.get("reminder_after_unit", "minutes"),    # new
+            interval_before_unit=data.get("reminder_before_unit", "minutes"),  
+            interval_after_unit=data.get("reminder_after_unit", "minutes"),    
             remind_end=remind_end,
         )
 
@@ -167,63 +167,42 @@ class ReminderService:
         print(f"[DEBUG] Scheduled 'after' reminders for task_id={task.id}, start={due}, "
               f"end={reminder.remind_end}")
 
+
     @staticmethod
     async def _send_reminder(task_id: int, before: bool):
-        """Отправка уведомления пользователю."""
         if ReminderService._bot is None:
-            print("Bot is not initialized!")
             return
+
         bot = ReminderService._bot
 
         async with get_session() as session:
             result = await session.execute(
                 select(Task)
-                .options(selectinload(Task.reminder), selectinload(Task.user))
+                .options(
+                    selectinload(Task.reminder),
+                    selectinload(Task.user)
+                )
                 .where(Task.id == task_id)
             )
             task = result.scalar_one_or_none()
-            if not task or not task.reminder:
+            if not task or not task.reminder or not task.is_active:
                 return
-
 
             user_tz = ZoneInfo(task.user.timezone)
             due_local = task.due_at.astimezone(user_tz)
-            
-            if not task.is_active:
-                cancel_task_jobs(task.id, due_local)
-                return
-                  
-            
+
             now_utc = datetime.now(UTC)
             delta = task.due_at - now_utc
             time_left = format_time_delta(delta)
 
-            if task.reminder.interval_before_unit == "minutes":
-                before_unit = "минут"
-            else:
-                before_unit = "секунд"
-
-            if task.reminder.interval_after_unit == "minutes":
-                after_unit = "минут"
-            else:
-                after_unit = "секунд"
-
             text = (
                 f"⏰ Напоминание!\n\n"
                 f"📝 Задача: {task.title}\n"
-                f"⏳ Дедлайн: {due_local.strftime('%H:%M')}\n"
+                f"⏳ Время задачи: {due_local.strftime('%H:%M')}\n"
                 f"⏱ {time_left}\n\n"
-                # f"{'До дедлайна' if before else 'После дедлайна'}\n"
-                
-                # f"Начало напоминаний: {task.reminder.remind_start} мин. до дедлайна\n"
-                # f"Интервал до дедлайна: {task.reminder.interval_before_deadline} {before_unit}\n"
-                # f"Интервал после дедлайна: {task.reminder.interval_after_deadline} {after_unit}\n"
                 f"Окончание напоминаний: "
-                f"{task.reminder.remind_end.astimezone(ZoneInfo(task.user.timezone)).strftime('%H:%M') if task.reminder.remind_end else 'не ограничено'}"
+                f"{task.reminder.remind_end.astimezone(user_tz).strftime('%H:%M') if task.reminder.remind_end else 'не ограничено'}"
             )
-
-
-            # await bot.send_message(chat_id=task.user.telegram_id, text=text)
 
             msg = await bot.send_message(
                 chat_id=task.user.telegram_id,
@@ -238,17 +217,6 @@ class ReminderService:
                     message_id=msg.message_id
                 )
             )
+
+            task.reminder.last_notified_at = now_utc
             await session.commit()
-
-
-            # await bot.send_message(
-            #     chat_id=task.user.telegram_id,
-            #     text=text,
-            #     reply_markup=reminder_actions_keyboard(task.id)
-            # )
-            print(f"[DEBUG] Sent reminder for task_id={task.id}, before={before}")
-
-            # Обновляем время последнего уведомления
-            task.reminder.last_notified_at = datetime.utcnow()
-            await session.commit()
-            print(f"[DEBUG] Updated last_notified_at for task_id={task.id}")

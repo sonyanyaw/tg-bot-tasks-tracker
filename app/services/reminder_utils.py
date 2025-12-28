@@ -1,25 +1,32 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-def calculate_next_due(task, user_tz: ZoneInfo):
-    """Определяем ближайшее выполнение задачи с учетом расписания"""
+def calculate_next_due(task, user_tz: ZoneInfo, is_done: bool):
+    """
+    is_done = True  → пользователь нажал "выполнено" или "отменить"
+    is_done = False → автопереход 
+    """
+
     if not task.schedules:
-        # fallback на due_at, если расписания нет
         return task.due_at.astimezone(user_tz)
 
-    today = datetime.now(user_tz).date()
-    now_time = datetime.now(user_tz).time()
+    now = datetime.now(user_tz)
+    base_dt = (
+        now
+        if not is_done
+        else task.due_at.astimezone(user_tz) + timedelta(seconds=1)
+    )
 
-    upcoming = sorted(task.schedules, key=lambda s: (s.weekday, s.task_time))
-    for sched in upcoming:
-        delta_days = (sched.weekday - today.weekday()) % 7
-        due_date = today + timedelta(days=delta_days)
+    candidates: list[datetime] = []
+
+    for sched in task.schedules:
+        delta_days = (sched.weekday - base_dt.weekday()) % 7
+        due_date = base_dt.date() + timedelta(days=delta_days)
         due_dt = datetime.combine(due_date, sched.task_time, tzinfo=user_tz)
-        if due_dt > datetime.now(user_tz):
-            return due_dt
 
-    # если ничего не найдено — берём первый в следующей неделе
-    first_sched = upcoming[0]
-    due_date = today + timedelta(days=(first_sched.weekday - today.weekday() + 7) % 7)
-    return datetime.combine(due_date, first_sched.task_time, tzinfo=user_tz)
+        if delta_days == 0 and due_dt <= base_dt:
+            due_dt += timedelta(days=7)
 
+        candidates.append(due_dt)
+
+    return min(candidates)

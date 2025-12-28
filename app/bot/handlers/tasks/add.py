@@ -223,7 +223,7 @@ async def reminder_before_unit_handler(callback: CallbackQuery, state: FSMContex
     unit = callback.data.split(":")[1]
     await state.update_data(reminder_before_unit=unit)
 
-    await callback.message.answer("🔁 Интервал ДО дедлайна:")
+    await callback.message.answer("🔁 Интервал ДО задачи:")
     await state.set_state(TaskAddState.reminder_before)
     await callback.answer()
 
@@ -312,8 +312,8 @@ async def reminder_after_end_handler(message: Message, state: FSMContext):
         "✅ Подтвердить создание задачи?\n\n"
         f"📝 {data['title']}\n"
         f"⏰ Время: {data['time'].strftime('%H:%M')}\n"
-        f"⏳ Напоминание начнётся: {data.get('reminder_start_before', 0)} минут до дедлайна\n"
-        f"🔹 Интервал ДО дедлайна: {data.get('reminder_before', 0)} {before_units}\n"
+        f"⏳ Напоминание начнётся: {data.get('reminder_start_before', 0)} минут до задачи\n"
+        f"🔹 Интервал ДО задачи: {data.get('reminder_before', 0)} {before_units}\n"
         f"🔹 Интервал ПОСЛЕ дедлайна: {data.get('reminder_after', 0)} {after_units}\n"
         f"⏹ Конец напоминаний после дедлайна: {end_str}",
         reply_markup=confirm_keyboard()

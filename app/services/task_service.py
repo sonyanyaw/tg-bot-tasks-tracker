@@ -93,27 +93,28 @@ class TaskService:
         """
         Возвращает ближайший due_at для задачи как ориентир.
         Для одноразовой задачи (без расписания) берём data["time"].
-        Для повторяющихся задач с расписанием берём первый ближайший день и время.
+        Для повторяющихся задач с расписанием берём ближайший день и время (аналогично calculate_next_due).
         """
         user_tz = ZoneInfo(user.timezone)
-        today = datetime.now(user_tz).date()
-        print('[DEBUG] TODAY TIME', today, datetime.now())
-
+        now = datetime.now(user_tz)
         weekdays = data.get("weekdays") or []
         times = data.get("times") or []
 
         if weekdays and times:
-            # первый день и время
-            first_weekday = weekdays[0]
-            first_time = times[0]
-
-            delta_days = (first_weekday - today.weekday()) % 7
-            first_date = today + timedelta(days=delta_days)
-
-            local_dt = datetime.combine(first_date, first_time, tzinfo=user_tz)
+            # Собираем все возможные варианты дат и времени
+            candidates = []
+            for weekday, time_obj in zip(weekdays, times):
+                delta_days = (weekday - now.weekday()) % 7
+                due_date = now.date() + timedelta(days=delta_days)
+                due_dt = datetime.combine(due_date, time_obj, tzinfo=user_tz)
+                # если сегодня, но время уже прошло → переносим на следующую неделю
+                if delta_days == 0 and due_dt <= now:
+                    due_dt += timedelta(days=7)
+                candidates.append(due_dt)
+            local_dt = min(candidates)
         else:
             # fallback на одноразовую задачу
-            local_dt = datetime.combine(today, data["time"], tzinfo=user_tz)
+            local_dt = datetime.combine(now.date(), data["time"], tzinfo=user_tz)
 
         return local_dt.astimezone(ZoneInfo("UTC"))
 
